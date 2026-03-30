@@ -95,9 +95,9 @@ class ClinicSim:
             sim.clinicians.append(
                 Clinician(
                     id = i + cur_in_list,
-                    appointment_time=config.appointment_length,
-                    shift_start=config.shift_pattern[0],
-                    shift_end=config.shift_pattern[1]
+                    appointment_time=config["appointment_length"],
+                    shift_start=config["shift_pattern"][0],
+                    shift_end=config["shift_pattern"][1]
                 )
             )
 
@@ -175,7 +175,7 @@ class ClinicSim:
             (c.next_available, c)
             for c in sim.clinicians if c.next_available is not None
         ]
-        return min(active, default=float('inf', None), key=lambda x:x[0])
+        return min(active, default=(float('inf'), None), key=lambda x:x[0])
         #return next availabe and clinician object (find smallest first element in list and replace with a default value of 'inf' if none)
 
 
@@ -202,15 +202,38 @@ class ClinicSim:
 
 np.random.seed(64) #my fave number
 
-simulation = ClinicSim(
+simulation_1 = ClinicSim(
     lambda_base=8,
     appointment_time=30, #mins
-    num_clinicians= 6,
     peak_multiplier=4
 )
 
-while simulation.clock < simulation.close_time: 
-    simulation.step()
+# simulation_1.create_clinicians(
+#     n_clinicians= 6, 
+#     config= {
+#         "shift_pattern" : (8.0, 17.5),
+#         "appointment_length" : 30
+#     }
+# )
+
+simulation_1.create_clinicians(
+    n_clinicians= 4, 
+    config= {
+        "shift_pattern" : (8.0, 14.0),
+        "appointment_length" : 30
+    }
+)
+
+simulation_1.create_clinicians(
+    n_clinicians= 4, 
+    config= {
+        "shift_pattern" : (11.5, 17.5),
+        "appointment_length" : 30
+    }
+)
+
+while simulation_1.clock < simulation_1.close_time: 
+    simulation_1.step()
 
 
 print("Sim finished")
@@ -227,7 +250,7 @@ import numpy as np
 
 
 
-def plot_simulation_1(sim):
+def plot_simulation_1(sim: ClinicSim):
 
     _, ax = plt.subplots(figsize=(12,6))
 
@@ -251,9 +274,13 @@ def plot_simulation_1(sim):
 
     ax.legend()
 
-    ax.set_title(f"Patient arrival, departures, and total system capacity for flat rate peak multiplier = {simulation.peak_multiplier}.")
+    ax.set_title(f"Patient arrival, departures, and total system capacity for flat rate peak multiplier = {simulation_1.peak_multiplier}.")
 
     print("Finished plotting")
+
+
+
+plot_simulation_1(simulation_1)
 
 ########################################################################################
 
