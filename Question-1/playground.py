@@ -186,5 +186,53 @@ def plot_simulation_1(sim):
 
 ########################################################################################
 
+#### Want to now run n sims with the same inputs, but getting a better view of things bc of averagine from the random nature of the model 
 
 
+
+# compute metrics method for one sim result
+def compute_sim_result_metrics(sim: ClinicSim) -> dict[str, float]:
+    waits = np.array(sim.waits)
+
+    peaks = [n for (_, n) in sim.sys_state]
+
+    eod_patients = sim.num_in_system # this is EOD value by defualt if sim is complete
+
+    patients_served = len(sim.departure_times) #every departure is a patient served
+
+    return {
+        "avg_wait" : waits.mean(),
+        "peak" : max(peaks),
+        "eod_patients" : eod_patients,
+        "patients_served" : patients_served
+    }
+
+
+# run a load of sims
+
+def run_multisim_avg(n_sims: int, **kwargs): 
+    """
+    Run n simulations and compute and return the average metrics. All inputs are the same.
+
+    Inputs: 
+        n_sims(int) = Number of sims to run. 
+        **kwargs = simulation input args (for all sims). 
+    """
+
+    results = {}
+
+    for i in range(n_sims): 
+        np.random.seed(i)
+
+        sim = ClinicSim(**kwargs)
+        
+        while sim.clock < sim.close_time:
+            sim.step()
+
+        metrics = compute_sim_result_metrics(sim)
+        results[i] = metrics 
+
+    return results
+
+
+# run n sims with 
