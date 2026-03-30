@@ -12,6 +12,7 @@
 
 # Standard inputs
 import numpy as np
+from typing import Literal, TypedDict
 
 # Simulation specifics
 from collections import deque
@@ -37,8 +38,7 @@ class Clinician:
         return np.random.exponential(1 / self.mu)
     
     def appointment_start(self, current_time: float): 
-        if self.available: 
-            self.total_appointment_time += current_time - self.last_event_time #assuming last event is finihsing an appointment
+        self.total_downtime += current_time - self.last_event_time #assuming last event is finihsing an appointment
 
         self.available = False
         self.last_event_time = current_time
@@ -57,7 +57,7 @@ class ClinicSim:
                  peak_hrs: tuple[float, float] = (10.0, 14.0)):
         sim.lambda_base = lambda_base
         sim.mu = 60/appointment_time #hourly rate
-        sim.num_clinicians = num_clinicians
+        # sim.num_clinicians = num_clinicians
 
         sim.peak_multiplier = peak_multiplier
         sim.peak_start = peak_hrs[0]
@@ -78,10 +78,28 @@ class ClinicSim:
         sim.arrival_times = []
         sim.departure_times = [] #just for data logging reasons
 
-        sim.servers = [None] * sim.num_clinicians #none indicates free server
+        # sim.servers = [None] * sim.num_clinicians #none indicates free server
+        sim.clinicians: list[Clinician] = []
 
         sim.t_arrival = sim.clock + sim.generate_interarrival()
 
+    ####################################################################
+
+    class ClinicianConfig(TypedDict): # define a type of shift for n number of clinicians
+        shift_pattern : tuple[float, float] # list of (start, end)
+        appointment_length : float # in minutes, list must match 
+
+    def create_clinicians(sim, n_clinicians: int, config: ClinicianConfig):
+        cur_in_list = len(sim.clinicians)
+        for i in range(n_clinicians):
+            sim.clinicians.append(
+                Clinician(
+                    id = i + cur_in_list,
+                    appointment_time=config.appointment_length,
+                    shift_start=config.shift_pattern[0],
+                    shift_end=config.shift_pattern[1]
+                )
+            )
 
     ####################################################################
 
@@ -101,6 +119,12 @@ class ClinicSim:
     def generate_service(sim):
         return np.random.exponential(1 / sim.mu)
     
+    def get_free_clinician(sim): 
+        for c in sim.clinicians: 
+            if c.available and sim.clock >= c.shift_start and sim.clock <= c.shift_end:
+                return c
+        return None #i.e. no one is free!
+    
     ####################################################################
 
     def arrival(sim):
@@ -108,48 +132,67 @@ class ClinicSim:
         sim.queue.append(sim.clock)
         sim.arrival_times.append(sim.clock)
 
-        # check for free clinician
-        for i in range(sim.num_clinicians):
-            if sim.servers[i] is None:
-                arrival_time = sim.queue.popleft()
-                service_time = sim.generate_service()
-                sim.servers[i] = sim.clock + service_time
+        clinician = sim.get_free_clinician()
 
-                wait = sim.clock - arrival_time
-                sim.waits.append(wait)
-                break
+        if clinician is not None:
+            arrival_time = sim.queue.popleft()
+
+            clinician.appointment_start(sim.clock)
+
+            service_time = clinician.generate_service()
+            clinician.next_available = sim.clock + service_time
+
+            wait = sim.clock - arrival_time
+            sim.waits.append(wait)
 
         sim.t_arrival = sim.clock + sim.generate_interarrival()
 
-    def departure(sim, clinician_id):
+    def departure(sim, clinician: Clinician): #any mutation to clinician here will modify the original sim.clinician object 
         sim.num_in_system -= 1
         sim.departure_times.append(sim.clock)
+
+        clinician.appointment_end(sim.clock)
 
         if sim.queue:
             arrival_time = sim.queue.popleft()
 
+            clinician.appointment_start(sim.clock)
+
             service_time = sim.generate_service()
-            sim.servers[clinician_id] = sim.clock + service_time
+            clinician.next_available = sim.clock + service_time
 
             wait = sim.clock - arrival_time
             sim.waits.append(wait)
         else:
-            sim.servers[clinician_id] = None
+            clinician.next_available = None
+
+        if sim.clock > clinician.shift_end: #enforce end of shift?
+            clinician.next_available = None
+            clinician.available = False
+
+    def get_next_departure(sim): #helper function
+        active = [
+            (c.next_available, c)
+            for c in sim.clinicians if c.next_available is not None
+        ]
+        return min(active, default=float('inf', None), key=lambda x:x[0])
+        #return next availabe and clinician object (find smallest first element in list and replace with a default value of 'inf' if none)
 
 
     ####################################################################
 
     def step(sim): #discrete time event - we just jump to the next time where *something* happens
-        active_departures = [t for t in sim.servers if t is not None] #find NEXT departure
-        next_depart = min(active_departures) if active_departures else float('inf')
+        # active_departures = [t for t in sim.servers if t is not None] #find NEXT departure
+        # next_depart = min(active_departures) if active_departures else float('inf')
+        next_depart_time, clinician = sim.get_next_departure()
 
-        if sim.t_arrival <= next_depart and sim.t_arrival <= sim.close_time: #if arrival happens next (before available server) and its before closing
+        if sim.t_arrival <= next_depart_time and sim.t_arrival <= sim.close_time: #if arrival happens next (before available server) and its before closing
             sim.clock = sim.t_arrival
             sim.arrival() #jump to arrival time and initiate arrival 
         else:
-            sim.clock = next_depart
-            clinician_id = sim.servers.index(next_depart)
-            sim.departure(clinician_id) 
+            sim.clock = next_depart_time
+            if clinician is not None: 
+                sim.departure(clinician)
 
         # Record system state (queue length OR total system)
         sim.sys_state.append((sim.clock, sim.num_in_system))
@@ -186,7 +229,7 @@ import numpy as np
 
 def plot_simulation_1(sim):
 
-    fig, ax = plt.subplots(figsize=(12,6))
+    _, ax = plt.subplots(figsize=(12,6))
 
     times, values = zip(*sim.sys_state)
 
