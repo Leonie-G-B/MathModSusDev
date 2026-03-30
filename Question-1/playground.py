@@ -16,14 +16,42 @@ import numpy as np
 # Simulation specifics
 from collections import deque
 
+class Clinician: 
+    def __init__(self, id, appointment_time: int, 
+                 shift_start: float,
+                 shift_end: float):
+        self.id : int = id
+        self.mu : float = 60/appointment_time
+        
+        self.shift_start : float = shift_start
+        self.shift_end   : float = shift_end
 
+        self.available : bool = True
+        self.next_available: float = None #float time of when they are next free
 
+        self.total_appointment_time : float = 0.0
+        self.total_downtime : float = 0.0
+        self.last_event_time : float = shift_start #to calculate downtime between appointments
 
-# BLAH BLAH BLAH 
+    def generate_service(self):
+        return np.random.exponential(1 / self.mu)
+    
+    def appointment_start(self, current_time: float): 
+        if self.available: 
+            self.total_appointment_time += current_time - self.last_event_time #assuming last event is finihsing an appointment
 
+        self.available = False
+        self.last_event_time = current_time
+
+    def appointment_end(self, current_time: float):
+        self.total_appointment_time += current_time - self.last_event_time #we could assume apppointment length but this is more foolproof incase of different EOD behaviour
+
+        self.available = True
+        self.last_event_time = current_time
+        
 
 class ClinicSim: 
-    def __init__(sim, lambda_base: int, appointment_time: int, num_clinicians: int, 
+    def __init__(sim, lambda_base: int, appointment_time: int, 
                  peak_multiplier: int = None, #should be 2,4,8 - use checking?
                  open_close: tuple[float, float] = (8.0, 17.5),
                  peak_hrs: tuple[float, float] = (10.0, 14.0)):
