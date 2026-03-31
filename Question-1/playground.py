@@ -13,9 +13,21 @@
 # Standard inputs
 import numpy as np
 from typing import Literal, TypedDict
+from enum import StrEnum
 
 # Simulation specifics
 from collections import deque
+
+
+class ServiceMethods(StrEnum): 
+    EXPONENTIAL = "exponential"
+    LOGNORMAL = "lognormal"    
+    NORMAL = "normal"
+
+class ClinicianConfig(TypedDict): # define a type of shift for n number of clinicians
+    shift_pattern : tuple[float, float] # list of (start, end)
+    appointment_length : float # in minutes, list must match 
+
 
 class Clinician: 
     def __init__(self, id, appointment_time: int, 
@@ -48,13 +60,13 @@ class Clinician:
 
         self.available = True
         self.last_event_time = current_time
-        
 
 class ClinicSim: 
     def __init__(sim, lambda_base: int, appointment_time: int, 
+                 service_method: ServiceMethods = "exponential",
                  peak_multiplier: int = None, #should be 2,4,8 - use checking?
                  open_close: tuple[float, float] = (8.0, 17.5),
-                 peak_hrs: tuple[float, float] = (10.0, 14.0)):
+                 peak_hrs: tuple[float, float] = (10.0, 14.0), **kwargs):
         sim.lambda_base = lambda_base
         sim.mu = 60/appointment_time #hourly rate
         # sim.num_clinicians = num_clinicians
@@ -78,16 +90,23 @@ class ClinicSim:
         sim.arrival_times = []
         sim.departure_times = [] #just for data logging reasons
 
+        sim.self_set_service_method(service_method, **kwargs) #can pass in "logn_simga" for example
+
         # sim.servers = [None] * sim.num_clinicians #none indicates free server
         sim.clinicians: list[Clinician] = []
 
         sim.t_arrival = sim.clock + sim.generate_interarrival()
 
-    ####################################################################
 
-    class ClinicianConfig(TypedDict): # define a type of shift for n number of clinicians
-        shift_pattern : tuple[float, float] # list of (start, end)
-        appointment_length : float # in minutes, list must match 
+    def self_set_service_method(sim, method: ServiceMethods, **kwargs): 
+        if method == "exponential": 
+            sim._service_func = lambda: np.random.exponential(1 / sim.mu)
+        elif method == "lognormal": 
+            sim._service_func = lambda: np.random.lognormal(mean= np.log(60/sim.mu), sigma=kwargs.get("logn_sigma", 0.5))
+        elif method == "normal": 
+            sim._service_func = lambda: max(0, np.random.normal(loc=60/sim.mu, scale= kwargs.get("norm_scale", 0.5)*(60/sim.mu)))
+
+    ####################################################################
 
     def create_clinicians(sim, n_clinicians: int, config: ClinicianConfig):
         cur_in_list = len(sim.clinicians)
@@ -117,7 +136,7 @@ class ClinicSim:
         return np.random.exponential(1 / lam)
 
     def generate_service(sim):
-        return np.random.exponential(1 / sim.mu)
+        return sim._service_func()
     
     def get_free_clinician(sim): 
         for c in sim.clinicians: 
@@ -139,7 +158,8 @@ class ClinicSim:
 
             clinician.appointment_start(sim.clock)
 
-            service_time = clinician.generate_service()
+            # service_time = clinician.generate_service()
+            service_time = sim.generate_service()
             clinician.next_available = sim.clock + service_time
 
             wait = sim.clock - arrival_time
@@ -159,6 +179,7 @@ class ClinicSim:
             clinician.appointment_start(sim.clock)
 
             service_time = sim.generate_service()
+            # service_time = clinician.generate_service()
             clinician.next_available = sim.clock + service_time
 
             wait = sim.clock - arrival_time
@@ -184,6 +205,7 @@ class ClinicSim:
     def step(sim): #discrete time event - we just jump to the next time where *something* happens
         # active_departures = [t for t in sim.servers if t is not None] #find NEXT departure
         # next_depart = min(active_departures) if active_departures else float('inf')
+        assert len(sim.clinicians) >= 1, "No clinicians created. Call create_clinicians()."
         next_depart_time, clinician = sim.get_next_departure()
 
         if sim.t_arrival <= next_depart_time and sim.t_arrival <= sim.close_time: #if arrival happens next (before available server) and its before closing
@@ -202,11 +224,34 @@ class ClinicSim:
 
 np.random.seed(64) #my fave number
 
+# simulation_1 = ClinicSim(
+#     lambda_base=8,
+#     appointment_time=30, #mins
+#     peak_multiplier=4
+# )
+
 simulation_1 = ClinicSim(
     lambda_base=8,
     appointment_time=30, #mins
-    peak_multiplier=4
+    service_method = "exponential", 
+    peak_multiplier= 3
 )
+
+# simulation_1 = ClinicSim(
+#     lambda_base=8,
+#     appointment_time=30, #mins
+#     service_method = "lognormal", 
+#     peak_multiplier= 4,
+#     logn_sigma = 0.5
+# )
+
+# simulation_1 = ClinicSim(
+#     lambda_base=8,
+#     appointment_time=30, #mins
+#     service_method = "normal", 
+#     peak_multiplier= 4,
+#     norm_scale = 0.5
+# )
 
 # simulation_1.create_clinicians(
 #     n_clinicians= 6, 
@@ -228,9 +273,10 @@ simulation_1.create_clinicians(
     n_clinicians= 4, 
     config= {
         "shift_pattern" : (11.5, 17.5),
-        "appointment_length" : 30
+        "appointment_length" : 20
     }
 )
+
 
 while simulation_1.clock < simulation_1.close_time: 
     simulation_1.step()
