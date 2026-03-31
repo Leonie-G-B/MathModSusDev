@@ -67,13 +67,16 @@ class ClinicSim:
                  peak_multiplier: int = None, #should be 2,4,8 - use checking?
                  open_close: tuple[float, float] = (8.0, 17.5),
                  peak_hrs: tuple[float, float] = (10.0, 14.0), **kwargs):
+        
         sim.lambda_base = lambda_base
-        sim.mu = 60/appointment_time #hourly rate
-        # sim.num_clinicians = num_clinicians
-
+        sim.lambdas_t = []
+        
         sim.peak_multiplier = peak_multiplier
         sim.peak_start = peak_hrs[0]
         sim.peak_end = peak_hrs[1]
+
+        sim.mu = 60/appointment_time #hourly rate
+        # sim.num_clinicians = num_clinicians
 
         sim.open_time = open_close[0]
         sim.close_time = open_close[1]
@@ -133,6 +136,7 @@ class ClinicSim:
 
     def generate_interarrival(sim):
         lam = sim.get_lambda()
+        sim.lambdas_t. append((lam, sim.clock))
         return np.random.exponential(1 / lam)
 
     def generate_service(sim):
@@ -230,10 +234,15 @@ np.random.seed(64) #my fave number
 #     peak_multiplier=4
 # )
 
+
+#### CONFIG #####
+service_dist : ServiceMethods = "exponential"
+
+
 simulation_1 = ClinicSim(
     lambda_base=8,
     appointment_time=30, #mins
-    service_method = "exponential", 
+    service_method = service_dist, 
     peak_multiplier= 3
 )
 
@@ -265,17 +274,25 @@ simulation_1.create_clinicians(
     n_clinicians= 4, 
     config= {
         "shift_pattern" : (8.0, 14.0),
-        "appointment_length" : 30
+        "appointment_length" : 10
     }
 )
 
 simulation_1.create_clinicians(
-    n_clinicians= 4, 
+    n_clinicians= 3, 
     config= {
         "shift_pattern" : (11.5, 17.5),
-        "appointment_length" : 20
+        "appointment_length" : 10
     }
 )
+
+# simulation_1.create_clinicians(
+#     n_clinicians= 10, 
+#     config= {
+#         "shift_pattern" : (10.0, 14.0),
+#         "appointment_length" : 30
+#     }
+# )
 
 
 while simulation_1.clock < simulation_1.close_time: 
@@ -296,7 +313,7 @@ import numpy as np
 
 
 
-def plot_simulation_1(sim: ClinicSim):
+def plot_arrival_depart(sim: ClinicSim):
 
     _, ax = plt.subplots(figsize=(12,6))
 
@@ -324,9 +341,33 @@ def plot_simulation_1(sim: ClinicSim):
 
     print("Finished plotting")
 
+def plot_lamda_t(sim: ClinicSim): 
+
+    times, lambdas = zip(*sim.lambdas_t)
+
+    _, ax = plt.subplots(figsize=(12,6))
+
+    ax.step(times, lambdas)
+    ax.xlabel("Time")
+    ax.ylabel("Lambda (arrival rate)")
+    ax.title("Arrival Rate Over Time")
+    print("completed plot")
+
+def plot_mu_distribution_actual(sim: ClinicSim, n_samples: int = 100): 
+    samples = [sim.generate_service() for _ in range(n_samples)]
+
+    _, ax = plt.subplots(figsize=(12,6))
+
+    ax.hist(samples, bins=100, density=True)
+    ax.xlabel("Service time")
+    ax.ylabel("Density")
+    ax.title("Service Time Distribution")
+    print("completed plot")
 
 
-plot_simulation_1(simulation_1)
+plot_arrival_depart(simulation_1)
+plot_lamda_t(simulation_1)
+plot_mu_distribution_actual(simulation_1)
 
 ########################################################################################
 
@@ -351,6 +392,9 @@ def compute_sim_result_metrics(sim: ClinicSim) -> dict[str, float]:
         "patients_served" : patients_served
     }
 
+metrics = compute_sim_result_metrics(sim = simulation_1)
+print(metrics)
+print("done")
 
 # run a load of sims
 
