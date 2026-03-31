@@ -102,12 +102,18 @@ class ClinicSim:
 
 
     def self_set_service_method(sim, method: ServiceMethods, **kwargs): 
+        mean_serv_hrs = 1 /sim.mu
         if method == "exponential": 
-            sim._service_func = lambda: np.random.exponential(1 / sim.mu)
+            sim._service_func = lambda: np.random.exponential(mean_serv_hrs)
         elif method == "lognormal": 
-            sim._service_func = lambda: np.random.lognormal(mean= np.log(60/sim.mu), sigma=kwargs.get("logn_sigma", 0.5))
+            sigma = kwargs.get("logn_sigma", 0.5)
+            mu_log = np.log(mean_serv_hrs) - 0.5 * sigma**2
+            sim._service_func = lambda: np.random.lognormal(mean= mu_log, sigma = sigma)
         elif method == "normal": 
-            sim._service_func = lambda: max(0, np.random.normal(loc=60/sim.mu, scale= kwargs.get("norm_scale", 0.5)*(60/sim.mu)))
+            sim._service_func = lambda: max(0, np.random.normal(
+                loc = mean_serv_hrs,
+                scale= kwargs.get("norm_scale", 0.2) * mean_serv_hrs
+                ))
 
     ####################################################################
 
@@ -236,15 +242,15 @@ np.random.seed(64) #my fave number
 
 
 #### CONFIG #####
-service_dist : ServiceMethods = "exponential"
+sim_kwargs = {
+    "lambda_base" : 8,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 3
+}
 
 
-simulation_1 = ClinicSim(
-    lambda_base=8,
-    appointment_time=30, #mins
-    service_method = service_dist, 
-    peak_multiplier= 3
-)
+simulation_1 = ClinicSim(**sim_kwargs)
 
 # simulation_1 = ClinicSim(
 #     lambda_base=8,
@@ -341,33 +347,68 @@ def plot_arrival_depart(sim: ClinicSim):
 
     print("Finished plotting")
 
-def plot_lamda_t(sim: ClinicSim): 
+def plot_lamda_t(sim: ClinicSim):
 
-    times, lambdas = zip(*sim.lambdas_t)
+    lambdas, times = zip(*sim.lambdas_t)
+    fig, ax = plt.subplots(figsize=(12, 6))
 
-    _, ax = plt.subplots(figsize=(12,6))
+    ax.step(times, lambdas, where='post', linewidth=2, label="λ(t) arrival rate")
 
-    ax.step(times, lambdas)
-    ax.xlabel("Time")
-    ax.ylabel("Lambda (arrival rate)")
-    ax.title("Arrival Rate Over Time")
+    mean_lambda = np.mean(lambdas)
+    ax.axhline(mean_lambda, color='red', linestyle='--', linewidth=1.5,
+               label=f"Mean λ = {mean_lambda:.2f}")
+
+    if hasattr(sim, "peak_start") and hasattr(sim, "peak_end"): #if provided, plot the peak hrs
+        ax.axvspan(sim.peak_start, sim.peak_end, color='yellow', alpha=0.2,
+                   label="Peak hours")
+
+    ax.set_xlabel("Time of Day")
+    ax.set_ylabel("Arrival Rate λ(t)")
+    ax.set_title("Arrival Rate Over Time")
+
+    ax.grid(True, linestyle='--', alpha=0.5)
+    ax.legend(loc="upper left")
+    fig.tight_layout()
+
     print("completed plot")
 
-def plot_mu_distribution_actual(sim: ClinicSim, n_samples: int = 100): 
-    samples = [sim.generate_service() for _ in range(n_samples)]
 
-    _, ax = plt.subplots(figsize=(12,6))
+def plot_service_distribution_actual(sim: ClinicSim, n_samples: int = 500):
 
-    ax.hist(samples, bins=100, density=True)
-    ax.xlabel("Service time")
-    ax.ylabel("Density")
-    ax.title("Service Time Distribution")
+    samples = [sim.generate_service() * 60 for _ in range(n_samples)]
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    #gonna convert things from mu to times (in minutes)
+    ax.hist(samples, bins=40, density=True, alpha=0.6, color="steelblue",
+            edgecolor="black", label="Sampled service times")
+
+    try: 
+        sbn.kdeplot(samples, ax=ax, color="darkred", linewidth=2,
+                    label="KDE (smooth density)")
+    except Exception: 
+        print("failed to plot seaborn kde bounds")
+
+    ax.set_xlabel("Service time")
+    ax.set_ylabel("Density")
+    ax.set_title(f"Service Time Distribution. N_samples = {n_samples}")
+
+    mean_val = np.mean(samples)
+    ax.axvline(mean_val, color="green", linestyle="--", linewidth=2,
+               label=f"Mean = {mean_val:.2f}")
+
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.set_xlim(left = 0)
+    ax.legend()
+
+    fig.tight_layout()
     print("completed plot")
+
 
 
 plot_arrival_depart(simulation_1)
 plot_lamda_t(simulation_1)
-plot_mu_distribution_actual(simulation_1)
+plot_service_distribution_actual(simulation_1, n_samples=500)
 
 ########################################################################################
 
