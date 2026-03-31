@@ -18,6 +18,9 @@ from enum import StrEnum
 # Simulation specifics
 from collections import deque
 
+# Plots
+import seaborn as sbn
+
 
 class ServiceMethods(StrEnum): 
     EXPONENTIAL = "exponential"
@@ -439,29 +442,130 @@ print("done")
 
 # run a load of sims
 
-def run_multisim_avg(n_sims: int, **kwargs): 
+#first we make a class that mimics ClinicSim but is more suitable for our averaged data
+#should still be able to use the regular plotting methods on it tho
+class AveragedSim: 
+    def __init__(self, sims: list):
+        self.sims= sims
+
+        ref = sims[0]
+        self.open_time = ref.open_time
+        self.close_time = ref.close_time
+        self.peak_start = ref.peak_start
+        self.peak_end = ref.peak_end
+
+        self.waits = np.concatenate([s.waits for s in sims])
+        self.arrival_times = np.concatenate([s.arrival_times for s in sims])
+        self.departure_times = np.concatenate([s.departure_times for s in sims])
+
+        self.sys_state = self._average_series("sys_state")
+        self.lambdas_t = self._average_series("lambdas_t")
+
+    def _average_series(self, attr, dt=0.01):
+        #interpolate because the time series are all different (time stamps only occuur at an event, which differs between sim)
+        time_grid = np.arange(self.open_time, self.close_time, dt)
+        all_interp = []
+
+        for sim in self.sims:
+            series = getattr(sim, attr, None)
+            if not series:
+                continue
+
+            times, values = zip(*series)
+            interp = np.interp(time_grid, times, values)
+            all_interp.append(interp)
+
+        if not all_interp:
+            return []
+
+        mean_values = np.mean(all_interp, axis=0)
+        return list(zip(time_grid, mean_values))
+
+def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs): 
     """
-    Run n simulations and compute and return the average metrics. All inputs are the same.
+    Run n simulations and compute and return the average metrics. 
+    Allows for a sweep
 
     Inputs: 
         n_sims(int) = Number of sims to run. 
+        metric_sweep: tuple = ("parameter name", [values])
         **kwargs = simulation input args (for all sims). 
     """
 
-    results = {}
+    def run_single_config(config_kwargs):
+        sims = []
+        metrics_list = []
 
-    for i in range(n_sims): 
-        np.random.seed(i)
+        for i in range(n_sims):
+            np.random.seed(i)
 
-        sim = ClinicSim(**kwargs)
-        
-        while sim.clock < sim.close_time:
-            sim.step()
+            sim = ClinicSim(**config_kwargs)
+            sim.create_clinicians(
+                n_clinicians= 6, 
+                config= {
+                    "shift_pattern" : (8.0, 17.5),
+                    "appointment_length" : 30
+                }
+            )
 
-        metrics = compute_sim_result_metrics(sim)
-        results[i] = metrics 
+            while sim.clock < sim.close_time:
+                sim.step()
 
-    return results
+            sims.append(sim)
+            metrics_list.append(compute_sim_result_metrics(sim))
+
+        agg_sim = AveragedSim(sims)
+
+        agg_metrics = {}
+        keys = metrics_list[0].keys()
+
+        for k in keys:
+            vals = [m[k] for m in metrics_list]
+            agg_metrics[k] = {
+                "mean": np.mean(vals),
+                "std": np.std(vals),
+                "p95": np.percentile(vals, 95)
+            }
+
+        return {
+            "aggregate_sim": agg_sim,
+            "metrics": agg_metrics,
+            "raw_metrics": metrics_list
+        }
+    
+    if metric_sweep is None: 
+        return run_single_config(kwargs)
+    else: 
+        param, values = metric_sweep
+        results = {}
+        for val in values:
+            config_kwargs = kwargs.copy()
+            config_kwargs[param] = val
+
+            results[val] = run_single_config(config_kwargs)
+
+        return results  
 
 
-# run n sims with 
+
+
+
+# run n sims with varying base lambda
+
+sim_kwargs = {
+    "lambda_base" : 8,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 3
+}
+
+results = run_multisim_avg(
+    n_sims=20,
+    **sim_kwargs
+)
+
+
+print("All done")
+# sweep_metric = (
+#     "lambda_base", np.linspace(8,16,9)
+# )
