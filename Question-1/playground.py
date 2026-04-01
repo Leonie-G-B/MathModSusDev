@@ -12,7 +12,8 @@
 
 # Standard inputs
 import numpy as np
-from typing import Literal, TypedDict
+import pandas as pd
+from typing import Literal, TypedDict, Sequence
 from enum import StrEnum
 
 # Simulation specifics
@@ -615,7 +616,7 @@ sim_kwargs_1 = {
 }
 
 results_1 = run_multisim_avg(
-    n_sims=10,
+    n_sims=50,
     metric_sweep= sweep_metric,
     **sim_kwargs_1
 )
@@ -636,7 +637,7 @@ sim_kwargs_2 = {
 }
 
 results_2 = run_multisim_avg(
-    n_sims=10,
+    n_sims=50,
     metric_sweep= sweep_metric,
     **sim_kwargs_2
 )
@@ -652,7 +653,7 @@ sim_kwargs_3 = {
 }
 
 results_3 = run_multisim_avg(
-    n_sims=10,
+    n_sims=50,
     metric_sweep= sweep_metric,
     **sim_kwargs_3
 )
@@ -668,7 +669,7 @@ sim_kwargs_4 = {
 }
 
 results_4 = run_multisim_avg(
-    n_sims=10,
+    n_sims=50,
     metric_sweep= sweep_metric,
     **sim_kwargs_4
 )
@@ -679,6 +680,98 @@ x3, y3 = print_sweep_results_quick(results_3, sweep_metric = sweep_metric, sim_i
 x4, y4 = print_sweep_results_quick(results_4, sweep_metric = sweep_metric, sim_inputs=sim_kwargs_4)
 
 
-def plot
+def build_df_for_plot(
+    results_dicts: Sequence[dict[float, dict]],
+    labels: Sequence[str],
+    sweep_metric: tuple[str, Sequence[float]],
+    metric: str = "avg_wait",
+    calc: str = "mean"
+) -> pd.DataFrame:
+    
+    param_name, values = sweep_metric
+    rows: list[dict[str, float | str]] = []
+    for res, label in zip(results_dicts, labels):
+        for val in sorted(values):
+            rows.append({
+                param_name: val,
+                "value": res[val]["metrics"][metric][calc],
+                "std": res[val]["metrics"][metric]["std"],
+                "label": label
+            })
+
+    return pd.DataFrame(rows)
+
+lamda_sweep_df = build_df_for_plot(
+    [results_1, results_2, results_3, results_4],
+    ["No peak modifier", "Normal peak up to x2", "Normal peak up to  x3", "Normal peak up to  x4"],
+    sweep_metric
+)
+
+
+def format_time_hours(val: float) -> str:
+    "Convert decimal hr numbers into something human readable and clear."
+    if val >= 1.0:
+        hours = int(val)
+        minutes = int(round((val - hours) * 60))
+        return f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+    else:
+        minutes = int(round(val * 60))
+        return f"{minutes}mins"
+
+def sweep_plot(df: pd.DataFrame):
+    plt.figure(figsize=(10,6))
+
+    
+
+    ax = sbn.lineplot(
+        data=df,
+        x="lambda_base",
+        y="value",
+        hue="label",
+        marker="o"
+    )
+
+    for label, subdf in df.groupby("label"):
+        plt.fill_between(
+            subdf["lambda_base"],
+            subdf["value"] - subdf["std"],
+            subdf["value"] + subdf["std"],
+            alpha=0.2
+        )
+        left_row = subdf.iloc[0] #lowest vals
+        plt.text(
+            left_row["lambda_base"] - 0.2,#shift slightly left
+            left_row["value"],
+            format_time_hours(left_row["value"]),
+            fontsize=9,
+            ha="right",
+            va="center"
+        )
+
+        max_idx = subdf["value"].idxmax()
+        max_row = subdf.loc[max_idx] #highest value, dont assume its the last tho 
+        plt.text(
+            max_row["lambda_base"] + 0.2,#shift slightly right
+            max_row["value"],
+            format_time_hours(max_row["value"]),
+            fontsize=9,
+            ha="left",
+            va="center"
+        )
+
+    x_min, x_max = df["lambda_base"].min(), df["lambda_base"].max()
+    plt.xlim(x_min - 1, x_max + 1) 
+    
+    ax.grid(True, which="major", linestyle="--", alpha=0.4)
+
+    plt.xlabel("Base λ")
+    plt.ylabel("Average wait (hrs)")
+    plt.legend(title="Peak hour behaviour scenario")
+    plt.tight_layout()
+    plt.title("Average Wait Time vs Base λ for varying peak hour effects.")
+
+    print("Plotted")
+
+sweep_plot(df = lamda_sweep_df)
 
 print("All done")
