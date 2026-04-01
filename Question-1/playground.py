@@ -64,6 +64,11 @@ class Clinician:
 
         self.available = True
         self.last_event_time = current_time
+    
+    def calc_workload(self):
+        shift_length = self.shift_end - self.shift_start
+        workload = (shift_length - self.total_downtime) / shift_length
+        self.workload = workload
 
 class ClinicSim: 
     def __init__(sim, lambda_base: int, appointment_time: int, 
@@ -448,11 +453,17 @@ def compute_sim_result_metrics(sim: ClinicSim) -> dict[str, float]:
 
     patients_served = len(sim.departure_times) #every departure is a patient served
 
+    #return a dict of each clinician and their %workload
+    for clinician in sim.clinicians:
+        clinician.calc_workload()
+    workloads = np.array([clinician.workload for clinician in sim.clinicians])
+
     return {
         "avg_wait" : waits.mean(),
         "peak" : max(peaks),
         "eod_patients" : eod_patients,
-        "patients_served" : patients_served
+        "patients_served" : patients_served,
+        "avg_clinician_workload" : workloads.mean()
     }
 
 metrics = compute_sim_result_metrics(sim = simulation_1)
@@ -605,8 +616,10 @@ def print_sweep_results_quick(results, sweep_metric: tuple[str, list], sim_input
 
 
 sweep_metric = (
-    "lambda_base", np.linspace(8,16,9)
+    "lambda_base", np.linspace(8,16,17)
 )
+
+run_n_sims = 30
 
 sim_kwargs_1 = {
     # "lambda_base" : 8,
@@ -616,7 +629,7 @@ sim_kwargs_1 = {
 }
 
 results_1 = run_multisim_avg(
-    n_sims=50,
+    n_sims=run_n_sims,
     metric_sweep= sweep_metric,
     **sim_kwargs_1
 )
@@ -637,7 +650,7 @@ sim_kwargs_2 = {
 }
 
 results_2 = run_multisim_avg(
-    n_sims=50,
+    n_sims=run_n_sims,
     metric_sweep= sweep_metric,
     **sim_kwargs_2
 )
@@ -653,7 +666,7 @@ sim_kwargs_3 = {
 }
 
 results_3 = run_multisim_avg(
-    n_sims=50,
+    n_sims=run_n_sims,
     metric_sweep= sweep_metric,
     **sim_kwargs_3
 )
@@ -669,7 +682,7 @@ sim_kwargs_4 = {
 }
 
 results_4 = run_multisim_avg(
-    n_sims=50,
+    n_sims=run_n_sims,
     metric_sweep= sweep_metric,
     **sim_kwargs_4
 )
@@ -703,7 +716,7 @@ def build_df_for_plot(
 
 lamda_sweep_df = build_df_for_plot(
     [results_1, results_2, results_3, results_4],
-    ["No peak modifier", "Normal peak up to x2", "Normal peak up to x3", "Normal peak up to x4"],
+    ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
     sweep_metric
 )
 
@@ -718,7 +731,10 @@ def format_time_hours(val: float) -> str:
         minutes = int(round(val * 60))
         return f"{minutes}mins"
 
-def sweep_plot(df: pd.DataFrame):
+
+def sweep_plot(df: pd.DataFrame, 
+               plot_shaded_regions: bool = True,
+               y_axis_in_time: bool = True, y_axis_in_perc: bool = False):
     plt.figure(figsize=(10,6))
 
     # sbn.set_palette("colorblind")
@@ -736,51 +752,89 @@ def sweep_plot(df: pd.DataFrame):
         marker="o",
         palette=colour_dict
     )
+    
+    annotated_values = set()# tracking to avoid duplicate labels
 
     # lines = plt.gca().get_lines()
     for label, subdf in df.groupby("label"):
         colour = colour_dict[label]
-        plt.fill_between(
-            subdf["lambda_base"],
-            subdf["value"] - subdf["std"],
-            subdf["value"] + subdf["std"],
-            color = colour, #american spelling :(
-            alpha=0.2
-        )
+        if plot_shaded_regions:
+            plt.fill_between(
+                subdf["lambda_base"],
+                subdf["value"] - subdf["std"],
+                subdf["value"] + subdf["std"],
+                color = colour, #american spelling :(
+                alpha=0.2
+            )
         left_row = subdf.iloc[0] #lowest vals
-        plt.text(
-            left_row["lambda_base"] - 0.2,#shift slightly left
-            left_row["value"],
-            format_time_hours(left_row["value"]),
-            fontsize=14,
-            ha="right",
-            va="center"
-        )
+        y_val_left = left_row["value"]
+        if y_axis_in_time and not y_axis_in_perc:
+            annotext = format_time_hours(y_val_left)
+        elif y_axis_in_perc: 
+            annotext = f"{round(y_val_left *100)}%" 
+        else: 
+            annotext = y_val_left
+        
+        if annotext not in annotated_values:
+            plt.text(
+                left_row["lambda_base"] - 0.2,#shift slightly left
+                left_row["value"],
+                annotext,
+                fontsize=14,
+                ha="right",
+                va="center"
+            )
+            annotated_values.add(annotext)
 
         max_idx = subdf["value"].idxmax()
         max_row = subdf.loc[max_idx] #highest value, dont assume its the last tho 
-        plt.text(
-            max_row["lambda_base"] + 0.2,#shift slightly right
-            max_row["value"],
-            format_time_hours(max_row["value"]),
-            fontsize=14,
-            ha="left",
-            va="center"
-        )
+        y_val_max = max_row["value"]
+        if y_axis_in_time and not y_axis_in_perc:
+            annotext = format_time_hours(y_val_max)
+        elif y_axis_in_perc:
+            annotext = f"{round(y_val_max*100)}%"
+        else:
+            annotext = y_val_max
+
+        if annotext not in annotated_values:
+            plt.text(
+                max_row["lambda_base"] + 0.2,
+                y_val_max,
+                annotext,
+                fontsize=14,
+                ha="left",
+                va="center"
+            )
+            annotated_values.add(annotext)
 
     x_min, x_max = df["lambda_base"].min(), df["lambda_base"].max()
     plt.xlim(x_min - 1.5, x_max + 1.5) 
     
     ax.grid(True, which="major", linestyle="--", alpha=0.4)
-
-    plt.xlabel("Base arrival rate, λ")
-    plt.ylabel("Average wait (hrs)")
-    plt.legend(title="Peak hour behaviour scenario")
     plt.tight_layout()
-    plt.title("Average Wait Time vs Base λ for varying peak hour effects.")
+    plt.legend(title="Peak hour behaviour scenario", loc = 'lower right')
 
-    print("Plotted")
+    return ax, plt
 
-sweep_plot(df = lamda_sweep_df)
+# ax, plot = sweep_plot(df = lamda_sweep_df)
+# plot.xlabel("Base arrival rate, λ")
+# plot.ylabel("Average wait (hrs)")
+# plot.title("Average Wait Time vs Base λ for varying peak hour effects.")
+
+
+### Now plot the same sweep plot but for clinician workload
+
+workload_lambda_sweep_df = build_df_for_plot(
+    results_dicts = [results_1, results_2, results_3, results_4],
+    labels = ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
+    sweep_metric= sweep_metric,
+    metric = "avg_clinician_workload")
+
+ax, plot = sweep_plot(df = workload_lambda_sweep_df , plot_shaded_regions=False,y_axis_in_perc = True)
+vals = plt.gca().get_yticks()
+plot.gca().set_yticklabels([f"{v*100:.0f}%" for v in vals])
+plot.xlabel("Base arrival rate, λ")
+plot.ylabel("Average Clinician Workload")
+plot.title("Average Clinician Workload vs Base λ for varying peak hour effects.")
 
 print("All done")
