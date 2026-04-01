@@ -235,7 +235,7 @@ class ClinicSim:
 
 # use a random seed to allow reproducibility! 
 
-np.random.seed(64) #my fave number
+# np.random.seed(64) #my fave number
 
 # simulation_1 = ClinicSim(
 #     lambda_base=8,
@@ -335,7 +335,6 @@ def plot_arrival_depart(sim: ClinicSim):
 
     ax.step(arrival_sorted, np.arange(1, len(arrival_sorted)+1),
             where='post', linestyle='--', label="Cumulative arrivals")
-
     ax.step(departure_sorted, np.arange(1, len(departure_sorted)+1),
             where='post', linestyle=':', label="Cumulative departures")
 
@@ -345,7 +344,6 @@ def plot_arrival_depart(sim: ClinicSim):
     ax.grid(True, which='both', axis='x', linestyle='--', alpha=0.5)
 
     ax.legend()
-
     ax.set_title(f"Patient arrival, departures, and total system capacity for flat rate peak multiplier = {simulation_1.peak_multiplier}.")
 
     print("Finished plotting")
@@ -410,14 +408,19 @@ def plot_service_distribution_actual(sim: ClinicSim, n_samples: int = 500):
 
 
 plot_arrival_depart(simulation_1)
-plot_lamda_t(simulation_1)
+# plot_lamda_t(simulation_1)
 plot_service_distribution_actual(simulation_1, n_samples=500)
 
 ########################################################################################
 
 #### Want to now run n sims with the same inputs, but getting a better view of things bc of averagine from the random nature of the model 
 
-
+class SimMetrics(StrEnum): 
+    MEAN_WAIT = "mean_wait"
+    P95_WAIT = "p95_wait"
+    STD_WAIT = "std_wait"
+    UTILISATION = "utilisation"
+    THROUGHPUT = "throughput"
 
 # compute metrics method for one sim result
 def compute_sim_result_metrics(sim: ClinicSim) -> dict[str, float]:
@@ -484,12 +487,20 @@ class AveragedSim:
 def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs): 
     """
     Run n simulations and compute and return the average metrics. 
-    Allows for a sweep
+    Allows for a sweep - if sweep metric given then it runs n_sims at for each value in the sweep.
 
     Inputs: 
         n_sims(int) = Number of sims to run. 
         metric_sweep: tuple = ("parameter name", [values])
         **kwargs = simulation input args (for all sims). 
+
+    Output: 
+        result_dict contains:
+        {
+            "aggregate_sim": AveragedSim,
+            "metrics": {metric: {mean, std, p95}},
+            "raw_metrics": [...]
+        }
     """
 
     def run_single_config(config_kwargs):
@@ -500,7 +511,7 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs):
             np.random.seed(i)
 
             sim = ClinicSim(**config_kwargs)
-            sim.create_clinicians(
+            sim.create_clinicians( #THIS IS MANUAL AND BAD!!!
                 n_clinicians= 6, 
                 config= {
                     "shift_pattern" : (8.0, 17.5),
@@ -552,20 +563,43 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs):
 
 # run n sims with varying base lambda
 
+# sim_kwargs = {
+#     "lambda_base" : 8,
+#     "appointment_time" : 30,
+#     "service_method" : "lognormal",
+#     "peak_multiplier" : 3
+# }
+
+# results = run_multisim_avg(
+#     n_sims=20,
+#     **sim_kwargs
+# )
+
+
+sweep_metric = (
+    "lambda_base", np.linspace(8,16,9)
+)
+
 sim_kwargs = {
-    "lambda_base" : 8,
+    # "lambda_base" : 8,
     "appointment_time" : 30,
     "service_method" : "lognormal",
     "peak_multiplier" : 3
 }
 
 results = run_multisim_avg(
-    n_sims=20,
+    n_sims=10,
+    metric_sweep= sweep_metric,
     **sim_kwargs
 )
 
 
+def print_sweep_results_quick(results, metric: str = "avg_wait", calc: str = "mean"):
+    print(f"Sweep results: {metric}")
+    for item in results: 
+        print(f"{str(item)} = {results[item]['metrics'][metric][calc]}")
+
+print_sweep_results_quick(results)
+
+
 print("All done")
-# sweep_metric = (
-#     "lambda_base", np.linspace(8,16,9)
-# )
