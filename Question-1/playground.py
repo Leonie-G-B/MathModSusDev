@@ -703,7 +703,7 @@ def build_df_for_plot(
 
 lamda_sweep_df = build_df_for_plot(
     [results_1, results_2, results_3, results_4],
-    ["No peak modifier", "Normal peak up to x2", "Normal peak up to  x3", "Normal peak up to  x4"],
+    ["No peak modifier", "Normal peak up to x2", "Normal peak up to x3", "Normal peak up to x4"],
     sweep_metric
 )
 
@@ -721,21 +721,30 @@ def format_time_hours(val: float) -> str:
 def sweep_plot(df: pd.DataFrame):
     plt.figure(figsize=(10,6))
 
-    
+    # sbn.set_palette("colorblind")
+    plt.rcParams.update({'font.size': 14})
+
+    labels = df["label"].unique()
+    palette = sbn.color_palette("colorblind", n_colors=len(labels))
+    colour_dict = dict(zip(labels, palette))
 
     ax = sbn.lineplot(
         data=df,
         x="lambda_base",
         y="value",
         hue="label",
-        marker="o"
+        marker="o",
+        palette=colour_dict
     )
 
+    # lines = plt.gca().get_lines()
     for label, subdf in df.groupby("label"):
+        colour = colour_dict[label]
         plt.fill_between(
             subdf["lambda_base"],
             subdf["value"] - subdf["std"],
             subdf["value"] + subdf["std"],
+            color = colour, #american spelling :(
             alpha=0.2
         )
         left_row = subdf.iloc[0] #lowest vals
@@ -743,7 +752,7 @@ def sweep_plot(df: pd.DataFrame):
             left_row["lambda_base"] - 0.2,#shift slightly left
             left_row["value"],
             format_time_hours(left_row["value"]),
-            fontsize=9,
+            fontsize=14,
             ha="right",
             va="center"
         )
@@ -754,17 +763,17 @@ def sweep_plot(df: pd.DataFrame):
             max_row["lambda_base"] + 0.2,#shift slightly right
             max_row["value"],
             format_time_hours(max_row["value"]),
-            fontsize=9,
+            fontsize=14,
             ha="left",
             va="center"
         )
 
     x_min, x_max = df["lambda_base"].min(), df["lambda_base"].max()
-    plt.xlim(x_min - 1, x_max + 1) 
+    plt.xlim(x_min - 1.5, x_max + 1.5) 
     
     ax.grid(True, which="major", linestyle="--", alpha=0.4)
 
-    plt.xlabel("Base λ")
+    plt.xlabel("Base arrival rate, λ")
     plt.ylabel("Average wait (hrs)")
     plt.legend(title="Peak hour behaviour scenario")
     plt.tight_layout()
