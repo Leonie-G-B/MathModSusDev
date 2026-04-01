@@ -69,12 +69,15 @@ class ClinicSim:
                  service_method: ServiceMethods = "exponential",
                  peak_multiplier: int = None, #should be 2,4,8 - use checking?
                  open_close: tuple[float, float] = (8.0, 17.5),
-                 peak_hrs: tuple[float, float] = (10.0, 14.0), **kwargs):
+                 peak_hrs: tuple[float, float] = (10.0, 14.0), 
+                 peak_normal_shape: bool = False, #if True, then creates a normal curve within the peak with max value peak_multiplier. Otherwise uses other default methods.
+                 **kwargs):
         
         sim.lambda_base = lambda_base
         sim.lambdas_t = []
         
-        sim.peak_multiplier = peak_multiplier
+        sim.peak_multiplier: int = peak_multiplier
+        sim.normal_peak: bool = peak_normal_shape
         sim.peak_start = peak_hrs[0]
         sim.peak_end = peak_hrs[1]
 
@@ -135,9 +138,20 @@ class ClinicSim:
     ####################################################################
 
     def get_lambda(sim):
-        if sim.peak_start <= sim.clock <= sim.peak_end:
+        if sim.peak_start <= sim.clock <= sim.peak_end: #if during peak time
             if sim.peak_multiplier is not None: 
                 multiplier = sim.peak_multiplier
+                if sim.normal_peak: 
+                    t = sim.clock 
+                    centre = (sim.peak_start + sim.peak_end) /2
+                    half_width = (sim.peak_end - sim.peak_start)/ 2
+                    x = (t - centre) / half_width
+                    k = 3 #steepness - should this be an input? 
+
+                    shape = np.exp(-k * x ** 2)
+                    edge = np.exp(-k) #normalise
+                    shape = (shape - edge) / (1- edge)
+                    multiplier = 1 + (sim.peak_multiplier - 1) * shape
             else:
                 multiplier = np.random.choice([2,3,4]) #" the number of patient arrivals can douple, triple, or even quadruple"
             return sim.lambda_base * multiplier
@@ -245,11 +259,12 @@ class ClinicSim:
 
 
 #### CONFIG #####
-sim_kwargs = {
+sim_kwargs : ClinicSim = {
     "lambda_base" : 8,
     "appointment_time" : 30,
     "service_method" : "lognormal",
-    "peak_multiplier" : 3
+    "peak_multiplier" : 4,
+    "peak_normal_shape" : True
 }
 
 
@@ -271,29 +286,29 @@ simulation_1 = ClinicSim(**sim_kwargs)
 #     norm_scale = 0.5
 # )
 
+simulation_1.create_clinicians(
+    n_clinicians= 6, 
+    config= {
+        "shift_pattern" : (8.0, 17.5),
+        "appointment_length" : 30
+    }
+)
+
 # simulation_1.create_clinicians(
-#     n_clinicians= 6, 
+#     n_clinicians= 4, 
 #     config= {
-#         "shift_pattern" : (8.0, 17.5),
-#         "appointment_length" : 30
+#         "shift_pattern" : (8.0, 14.0),
+#         "appointment_length" : 10
 #     }
 # )
 
-simulation_1.create_clinicians(
-    n_clinicians= 4, 
-    config= {
-        "shift_pattern" : (8.0, 14.0),
-        "appointment_length" : 10
-    }
-)
-
-simulation_1.create_clinicians(
-    n_clinicians= 3, 
-    config= {
-        "shift_pattern" : (11.5, 17.5),
-        "appointment_length" : 10
-    }
-)
+# simulation_1.create_clinicians(
+#     n_clinicians= 3, 
+#     config= {
+#         "shift_pattern" : (11.5, 17.5),
+#         "appointment_length" : 10
+#     }
+# )
 
 # simulation_1.create_clinicians(
 #     n_clinicians= 10, 
@@ -408,7 +423,7 @@ def plot_service_distribution_actual(sim: ClinicSim, n_samples: int = 500):
 
 
 plot_arrival_depart(simulation_1)
-# plot_lamda_t(simulation_1)
+plot_lamda_t(simulation_1)
 plot_service_distribution_actual(simulation_1, n_samples=500)
 
 ########################################################################################
@@ -558,9 +573,6 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs):
         return results  
 
 
-
-
-
 # run n sims with varying base lambda
 
 # sim_kwargs = {
@@ -576,30 +588,97 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, **kwargs):
 # )
 
 
+def print_sweep_results_quick(results, sweep_metric: tuple[str, list], sim_inputs: dict,metric: str = "avg_wait", calc: str = "mean"):
+
+    print(f"\nSweep results: {metric} for swept vals of {sweep_metric[0]}")
+    print(f"Constant sim metrics: \n{sim_inputs}")
+
+    x = []
+    y = []
+    for item in results: 
+        y_val = results[item]["metrics"][metric][calc]
+        print(f"{str(item)} = {y_val}")
+        x.append(item)
+        y.append(y_val)
+    return x,y
+
+
 sweep_metric = (
     "lambda_base", np.linspace(8,16,9)
 )
 
-sim_kwargs = {
+sim_kwargs_1 = {
     # "lambda_base" : 8,
     "appointment_time" : 30,
     "service_method" : "lognormal",
-    "peak_multiplier" : 3
+    "peak_multiplier" : 1
 }
 
-results = run_multisim_avg(
+results_1 = run_multisim_avg(
     n_sims=10,
     metric_sweep= sweep_metric,
-    **sim_kwargs
+    **sim_kwargs_1
 )
 
 
-def print_sweep_results_quick(results, metric: str = "avg_wait", calc: str = "mean"):
-    print(f"Sweep results: {metric}")
-    for item in results: 
-        print(f"{str(item)} = {results[item]['metrics'][metric][calc]}")
+x1, y1 = print_sweep_results_quick(results_1, sweep_metric = sweep_metric, sim_inputs=sim_kwargs_1)
 
-print_sweep_results_quick(results)
 
+########## Do all above again, but have the normal peak relationship - do once each for double, triple, and quadruple
+
+
+sim_kwargs_2 = {
+    # "lambda_base" : 8,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 2,
+    "peak_normal_shape" : True
+}
+
+results_2 = run_multisim_avg(
+    n_sims=10,
+    metric_sweep= sweep_metric,
+    **sim_kwargs_2
+)
+
+##
+
+sim_kwargs_3 = {
+    # "lambda_base" : 8,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 3,
+    "peak_normal_shape" : True
+}
+
+results_3 = run_multisim_avg(
+    n_sims=10,
+    metric_sweep= sweep_metric,
+    **sim_kwargs_3
+)
+
+##
+
+sim_kwargs_4 = {
+    # "lambda_base" : 8,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4,
+    "peak_normal_shape" : True
+}
+
+results_4 = run_multisim_avg(
+    n_sims=10,
+    metric_sweep= sweep_metric,
+    **sim_kwargs_4
+)
+
+
+x2, y2 = print_sweep_results_quick(results_2, sweep_metric = sweep_metric, sim_inputs=sim_kwargs_2)
+x3, y3 = print_sweep_results_quick(results_3, sweep_metric = sweep_metric, sim_inputs=sim_kwargs_3)
+x4, y4 = print_sweep_results_quick(results_4, sweep_metric = sweep_metric, sim_inputs=sim_kwargs_4)
+
+
+def plot
 
 print("All done")
