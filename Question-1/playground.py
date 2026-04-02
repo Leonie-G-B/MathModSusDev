@@ -21,6 +21,7 @@ from collections import deque
 
 # Plots
 import seaborn as sbn
+import matplotlib.pyplot as plt
 
 
 class ServiceMethods(StrEnum): 
@@ -338,9 +339,6 @@ print("Sim finished")
 # Plotting 
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 
 
 def plot_arrival_depart(sim: ClinicSim):
@@ -511,7 +509,11 @@ class AveragedSim:
         mean_values = np.mean(all_interp, axis=0)
         return list(zip(time_grid, mean_values))
 
-def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinicians: bool = False, additional_shift_pattern: tuple[float, float] =(10.0, 14.0), **kwargs): 
+def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, 
+                     additional_clinicians: bool = False, 
+                     additional_shift_pattern: tuple[float, float] =(10.0, 14.0), 
+                     appointment_length: int = 30,
+                     **kwargs): 
     """
     Run n simulations and compute and return the average metrics. 
     Allows for a sweep - if sweep metric given then it runs n_sims at for each value in the sweep.
@@ -542,7 +544,7 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinici
                 n_clinicians= 6, 
                 config= {
                     "shift_pattern" : (8.0, 18.0),
-                    "appointment_length" : 30
+                    "appointment_length" : appointment_length
                 }
             )
             if additional_clinicians: 
@@ -550,7 +552,7 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinici
                     n_clinicians= 2, 
                     config= {
                         "shift_pattern" : additional_shift_pattern,
-                        "appointment_length" : 30
+                        "appointment_length" : appointment_length
                     }
                 )
 
@@ -630,7 +632,8 @@ def sweep_metrics_4_peaks(sweep_metric , appointment_time: float= 30 , run_n_sim
         # "lambda_base" : 8,
         "appointment_time" : appointment_time,
         "service_method" : "lognormal",
-        "peak_multiplier" : 1
+        "peak_multiplier" : 1,
+        "peak_normal_shape" : True
     }
 
     results_1 = run_multisim_avg(
@@ -825,18 +828,18 @@ def sweep_plot(df: pd.DataFrame,
     return ax, plt
 
 
-# results_1, results_2, results_3, results_4 = sweep_metrics_4_peaks(sweep_metric=sweep_metric, run_n_sims=100)
+results_1, results_2, results_3, results_4 = sweep_metrics_4_peaks(sweep_metric=sweep_metric, run_n_sims=100)
 
-# lamda_sweep_df = build_df_for_plot(
-#     [results_1, results_2, results_3, results_4],
-#     ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
-#     sweep_metric
-# )
+lamda_sweep_df = build_df_for_plot(
+    [results_1, results_2, results_3, results_4],
+    ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
+    sweep_metric
+)
 
-# ax, plot = sweep_plot(df = lamda_sweep_df)
-# plot.xlabel("Base arrival rate, λ")
-# plot.ylabel("Average wait (hrs)")
-# plot.title("Average Wait Time vs Base λ for varying peak hour effects.")
+ax, plot = sweep_plot(df = lamda_sweep_df)
+plot.xlabel("Base arrival rate, λ")
+plot.ylabel("Average wait (hrs)")
+plot.title("Average Wait Time vs Base λ for varying peak hour effects.")
 
 # ### Now plot the same sweep plot but for clinician workload
 
@@ -861,30 +864,30 @@ def sweep_plot(df: pd.DataFrame,
 
 # plots: avg wait time
 
-results_1, results_2, results_3, results_4 = sweep_metrics_4_peaks(sweep_metric=sweep_metric, run_n_sims=100,imp_1=True)
-lamda_sweep_df = build_df_for_plot(
-    [results_1, results_2, results_3, results_4],
-    ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
-    sweep_metric
-)
-ax, plot = sweep_plot(df = lamda_sweep_df)
-plot.xlabel("Base arrival rate, λ")
-plot.ylabel("Average wait (hrs)")
-plot.title("Average Wait Time vs Base λ for varying peak hour effects. ADDITIONAL CLINICIANS.")
+# results_1, results_2, results_3, results_4 = sweep_metrics_4_peaks(sweep_metric=sweep_metric, run_n_sims=100,imp_1=True)
+# lamda_sweep_df = build_df_for_plot(
+#     [results_1, results_2, results_3, results_4],
+#     ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
+#     sweep_metric
+# )
+# ax, plot = sweep_plot(df = lamda_sweep_df)
+# plot.xlabel("Base arrival rate, λ")
+# plot.ylabel("Average wait (hrs)")
+# plot.title("Average Wait Time vs Base λ for varying peak hour effects. ADDITIONAL CLINICIANS.")
 
-workload_sweep_metrics_4_peaks_df = build_df_for_plot(
-    results_dicts = [results_1, results_2, results_3, results_4],
-    labels = ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
-    sweep_metric= sweep_metric,
-    metric = "avg_clinician_workload")
+# workload_sweep_metrics_4_peaks_df = build_df_for_plot(
+#     results_dicts = [results_1, results_2, results_3, results_4],
+#     labels = ["No peak modifier", "Normal peak up to 2x", "Normal peak up to 3x", "Normal peak up to 4x"],
+#     sweep_metric= sweep_metric,
+#     metric = "avg_clinician_workload")
 
-ax, plot = sweep_plot(df = workload_sweep_metrics_4_peaks_df , plot_shaded_regions=False,y_axis_in_perc = True)
-vals = plt.gca().get_yticks()
-plot.gca().set_yticklabels([f"{v*100:.0f}%" for v in vals])
-plot.axhline(1.0, color = "black", linestyle="--", linewidth= 1.5)
-plot.xlabel("Base arrival rate, λ")
-plot.ylabel("Average Clinician Workload")
-plot.title("Average Clinician Workload vs Base λ for varying peak hour effects.")
+# ax, plot = sweep_plot(df = workload_sweep_metrics_4_peaks_df , plot_shaded_regions=False,y_axis_in_perc = True)
+# vals = plt.gca().get_yticks()
+# plot.gca().set_yticklabels([f"{v*100:.0f}%" for v in vals])
+# plot.axhline(1.0, color = "black", linestyle="--", linewidth= 1.5)
+# plot.xlabel("Base arrival rate, λ")
+# plot.ylabel("Average Clinician Workload")
+# plot.title("Average Clinician Workload vs Base λ for varying peak hour effects.")
 
 
 # Improvement 2: Aim to reduce appointment times by n minutes 
@@ -1009,33 +1012,33 @@ def plot_heatmap_from_results(
 
     print("Plotted heatmap")
 
-plot_heatmap_from_results(
-    results_dict_1,
-    sweep_metric,
-    metric_limits= (0.0, 2.0),
-    title="No peak modifier"
-)
+# plot_heatmap_from_results(
+#     results_dict_1,
+#     sweep_metric,
+#     metric_limits= (0.0, 2.0),
+#     title="No peak modifier"
+# )
 
-plot_heatmap_from_results(
-    results_dict_2,
-    sweep_metric,
-    metric_limits= (0.0, 2.0),
-    title="2x Peak modifier"
-)
+# plot_heatmap_from_results(
+#     results_dict_2,
+#     sweep_metric,
+#     metric_limits= (0.0, 2.0),
+#     title="2x Peak modifier"
+# )
 
-plot_heatmap_from_results(
-    results_dict_3,
-    sweep_metric,
-    metric_limits= (0.0, 2.0),
-    title="3x Peak modifier"
-)
+# plot_heatmap_from_results(
+#     results_dict_3,
+#     sweep_metric,
+#     metric_limits= (0.0, 2.0),
+#     title="3x Peak modifier"
+# )
 
-plot_heatmap_from_results(
-    results_dict_4,
-    sweep_metric,
-    metric_limits= (0.0, 2.0),
-    title="4x Peak modifier"
-)
+# plot_heatmap_from_results(
+#     results_dict_4,
+#     sweep_metric,
+#     metric_limits= (0.0, 2.0),
+#     title="4x Peak modifier"
+# )
 
 
 # Calculate the overal worst case (4x peak multiplier, 16 base lambda) improvement to baseline
@@ -1068,40 +1071,112 @@ print(f"Improved method resulted in a {np.round(avg_wait_improvement*100, decima
 
 ### Heatmap: plot clinician schedule against 
 
-baseline_params_25 = {
-    "lambda_base" : 16,
-    "appointment_time" : 25,
-    "service_method" : "lognormal",
-    "peak_multiplier" : 4
-}
+def plot_schedule_heatmap(
+    results: dict[str, dict],
+    appointment_lengths: list[int],
+    shift_patterns: list[tuple[float, float]],
+    metric: str = "avg_wait",
+    calc: str = "mean",
+    metric_limits: tuple[float, float] | None = None,
+    title: str = ""
+):
+    data = []
+    annot_data = []
 
-baseline_params_30 = {
-    "lambda_base" : 16,
-    "appointment_time" : 25,
-    "service_method" : "lognormal",
-    "peak_multiplier" : 4
-}
+    # build rows (appointment lengths)
+    for appt in appointment_lengths:
+        row = []
+        annot_row = []
 
-baseline_params_35 = {
-    "lambda_base" : 16,
-    "appointment_time" : 25,
+        for shift in shift_patterns:
+            key = f"appt{appt}_shift{shift[0]}-{shift[1]}"
+            val = results[key]["metrics"][metric][calc]
+
+            row.append(val)
+            annot_row.append(format_time_hours(val))
+
+        data.append(row)
+        annot_data.append(annot_row)
+
+    shift_labels = [f"{int(s[0])}-{int(s[1])}" for s in shift_patterns]
+
+    df = pd.DataFrame(
+        data,
+        index=appointment_lengths,
+        columns=shift_labels
+    )
+
+    annot_df = pd.DataFrame(
+        annot_data,
+        index=appointment_lengths,
+        columns=shift_labels
+    )
+
+    plt.figure(figsize=(10,6))
+
+    heatmap_kwargs = dict(
+        data=df,
+        cmap="mako",
+        annot=annot_df,
+        fmt="",
+        cbar_kws={"label": "Average wait time"}
+    )
+
+    if metric_limits:
+        heatmap_kwargs["vmin"] = metric_limits[0]
+        heatmap_kwargs["vmax"] = metric_limits[1]
+
+    ax = sbn.heatmap(**heatmap_kwargs)
+
+    cbar = ax.collections[0].colorbar
+    ticks = cbar.get_ticks()
+    cbar.set_ticklabels([format_time_hours(t) for t in ticks])
+
+    plt.xlabel("Shift pattern (hrs)")
+    plt.ylabel("Appointment length (mins)")
+    plt.title(title or "Clinician schedule heatmap")
+
+    plt.tight_layout()
+    plt.show()
+
+    print("Plotted schedule heatmap")
+
+appointment_lengths = [25, 30, 35]
+shift_patterns = [(10.0, 14.0), (10.0, 15.0), (10.0, 16.0)]
+
+base_params = {
+    "lambda_base" : 8,
     "service_method" : "lognormal",
     "peak_multiplier" : 4
 }
 
 # Now run each above for 3 scenarios: 10-14, 10-15, 10-16
 
-short_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
-short_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
-short_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
+results = {}
 
-regular_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
-regular_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
-regular_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
+for appt_len in appointment_lengths:
+    for shift in shift_patterns:
+        params = {
+            **base_params,
+            "appointment_time": appt_len
+        }
 
-longer_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
-longer_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
-longer_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
+        key = f"appt{appt_len}_shift{shift[0]}-{shift[1]}"
+        results[key] = run_multisim_avg(
+            n_sims=100,
+            additional_clinicians=True,
+            additional_shift_pattern=shift,
+            appointment_length = appt_len,
+            **params
+        )
 
+plot_schedule_heatmap(
+    results,
+    appointment_lengths=appointment_lengths,
+    shift_patterns=shift_patterns,
+    metric="avg_wait",
+    # metric_limits=(0, 2),
+    title="Average wait vs clinician scheduling"
+)
 
 print("All done")
