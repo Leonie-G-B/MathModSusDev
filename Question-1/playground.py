@@ -511,7 +511,7 @@ class AveragedSim:
         mean_values = np.mean(all_interp, axis=0)
         return list(zip(time_grid, mean_values))
 
-def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinicians: bool = False,**kwargs): 
+def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinicians: bool = False, additional_shift_pattern: tuple[float, float] =(10.0, 14.0), **kwargs): 
     """
     Run n simulations and compute and return the average metrics. 
     Allows for a sweep - if sweep metric given then it runs n_sims at for each value in the sweep.
@@ -541,7 +541,7 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinici
             sim.create_clinicians( #THIS IS MANUAL AND BAD!!!
                 n_clinicians= 6, 
                 config= {
-                    "shift_pattern" : (8.0, 17.5),
+                    "shift_pattern" : (8.0, 18.0),
                     "appointment_length" : 30
                 }
             )
@@ -549,7 +549,7 @@ def run_multisim_avg(n_sims: int, metric_sweep: tuple = None, additional_clinici
                 sim.create_clinicians( #THIS IS MANUAL AND BAD!!!
                     n_clinicians= 2, 
                     config= {
-                        "shift_pattern" : (10.0, 14.0),
+                        "shift_pattern" : additional_shift_pattern,
                         "appointment_length" : 30
                     }
                 )
@@ -1036,7 +1036,72 @@ plot_heatmap_from_results(
     metric_limits= (0.0, 2.0),
     title="4x Peak modifier"
 )
+
+
+# Calculate the overal worst case (4x peak multiplier, 16 base lambda) improvement to baseline
+
+baseline_params = {
+    "lambda_base" : 16,
+    "appointment_time" : 30,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4
+}
+
+improved_params = {
+    "lambda_base" :16,
+    "appointment_time" : 25,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4
+}
+
+baseline_worstcase = run_multisim_avg(n_sims = 100, **baseline_params)
+improved_worstcase = run_multisim_avg(n_sims=100, additional_clinicians=True, **improved_params)
+
+baseline_avg_wait = baseline_worstcase['metrics']['avg_wait']['mean']
+improved_avg_wait = improved_worstcase['metrics']['avg_wait']['mean']
+
+avg_wait_improvement = (baseline_avg_wait- improved_avg_wait) / baseline_avg_wait
+
+print(f"Improved method resulted in a {np.round(avg_wait_improvement*100, decimals = 1)}% reduction in average wait times.")
+
 # See clinician workload 
+
+### Heatmap: plot clinician schedule against 
+
+baseline_params_25 = {
+    "lambda_base" : 16,
+    "appointment_time" : 25,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4
+}
+
+baseline_params_30 = {
+    "lambda_base" : 16,
+    "appointment_time" : 25,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4
+}
+
+baseline_params_35 = {
+    "lambda_base" : 16,
+    "appointment_time" : 25,
+    "service_method" : "lognormal",
+    "peak_multiplier" : 4
+}
+
+# Now run each above for 3 scenarios: 10-14, 10-15, 10-16
+
+short_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
+short_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
+short_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
+
+regular_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
+regular_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
+regular_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
+
+longer_shift_case1 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,14.0),**improved_params)
+longer_shift_case2 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,15.0),**improved_params)
+longer_shift_case3 = run_multisim_avg(n_sims=100, additional_clinicians=True, additional_shift_pattern=(10.0,16.0),**improved_params)
 
 
 print("All done")
